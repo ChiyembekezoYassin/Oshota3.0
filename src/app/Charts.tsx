@@ -147,7 +147,7 @@ const legendStyles = StyleSheet.create({
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function Charts() {
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-  const sidebarAnim = useRef(new Animated.Value(-SCREEN_WIDTH * 0.45)).current;
+  const sidebarAnim = useRef(new Animated.Value(-SCREEN_WIDTH * 0.55)).current;
 
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());

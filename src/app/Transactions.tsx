@@ -1,5 +1,5 @@
 /**
- * ScanReceipt.tsx
+ * ScanReceipt.tsx  (now supports Scan OR Manual entry)
  *
  * Dependencies to install:
  *   npx expo install expo-camera
@@ -9,7 +9,7 @@
  * Add to app.json plugins:
  *   ["expo-camera", { "cameraPermission": "Allow $(PRODUCT_NAME) to access camera to scan receipts." }]
  *
- * Route: add  { label: 'Scan Receipt', icon: 'scan-outline', href: '/ScanReceipt' }
+ * Route: add  { label: 'Add Transaction', icon: 'scan-outline', href: '/ScanReceipt' }
  *         to NAV_ITEMS in sidebar.tsx
  */
 
@@ -23,11 +23,10 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
-  Platform,
   Animated,
   Dimensions,
 } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -60,9 +59,9 @@ interface ParsedReceipt {
   rawText: string;
 }
 
+type Mode = 'scan' | 'manual';
+
 // ─── Category keyword map ─────────────────────────────────────────────────────
-// Maps keywords found in merchant name / receipt text → your app's category names.
-// Extend this list freely — the more keywords, the better the matching.
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   'Groceries': [
@@ -102,12 +101,10 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Pick the best matching category given raw OCR text */
 function matchCategory(text: string, availableCategories: Category[]): string {
   const lower = text.toLowerCase();
   const available = availableCategories.map((c) => c.name);
 
-  // Score each known category
   let bestCategory = '';
   let bestScore = 0;
 
@@ -120,18 +117,15 @@ function matchCategory(text: string, availableCategories: Category[]): string {
     }
   }
 
-  // Fallback: first available category, or empty
   return bestCategory || available[0] || '';
 }
 
-/** Extract merchant, amount and date from raw OCR text */
 function parseReceiptText(raw: string): ParsedReceipt {
   const lines = raw
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
 
-  // ── Amount: find the largest currency-looking number ──
   const amountCandidates: number[] = [];
   const amountRe = /(?:k|zmw|mwk|total|amount|due|pay)\s*[:\s]?\s*([\d,]+\.?\d{0,2})/gi;
   let m: RegExpExecArray | null;
@@ -139,7 +133,6 @@ function parseReceiptText(raw: string): ParsedReceipt {
     const val = parseFloat(m[1].replace(',', ''));
     if (!isNaN(val)) amountCandidates.push(val);
   }
-  // Also grab any standalone numbers that look like prices
   const priceRe = /\b(\d{1,6}[.,]\d{2})\b/g;
   while ((m = priceRe.exec(raw)) !== null) {
     const val = parseFloat(m[1].replace(',', ''));
@@ -150,7 +143,6 @@ function parseReceiptText(raw: string): ParsedReceipt {
       ? Math.max(...amountCandidates).toFixed(2)
       : '';
 
-  // ── Date: look for common date patterns ──
   const dateRe =
     /\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d{1,2},?\s*\d{4})\b/gi;
   const dateMatch = dateRe.exec(raw);
@@ -165,7 +157,6 @@ function parseReceiptText(raw: string): ParsedReceipt {
   }
   if (!parsedDate) parsedDate = new Date().toISOString().split('T')[0];
 
-  // ── Merchant: first non-trivial line ──
   const skipWords = /^(receipt|invoice|tax|vat|tel|phone|www|http|date|time|cash|change|thank)/i;
   const merchant =
     lines.find(
@@ -175,7 +166,7 @@ function parseReceiptText(raw: string): ParsedReceipt {
   return { merchant, amount, date: parsedDate, rawText: raw };
 }
 
-// ─── Step indicator ───────────────────────────────────────────────────────────
+// ─── Step indicator (scan mode only) ──────────────────────────────────────────
 
 function StepBar({ step }: { step: number }) {
   const steps = ['Capture', 'Review', 'Confirm'];
@@ -241,16 +232,66 @@ const stepStyles = StyleSheet.create({
   labelActive: { color: '#fff' },
 });
 
+// ─── Mode switch ──────────────────────────────────────────────────────────────
+
+function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  const options: { key: Mode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { key: 'scan', label: 'Scan receipt', icon: 'camera-outline' },
+    { key: 'manual', label: 'Enter manually', icon: 'create-outline' },
+  ];
+  return (
+    <View style={modeStyles.wrap}>
+      {options.map((o) => {
+        const active = o.key === mode;
+        return (
+          <TouchableOpacity
+            key={o.key}
+            style={[modeStyles.btn, active && modeStyles.btnActive]}
+            onPress={() => onChange(o.key)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name={o.icon} size={16} color={active ? '#16a34a' : 'rgba(255,255,255,0.65)'} />
+            <Text style={[modeStyles.text, active && modeStyles.textActive]}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+const modeStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    margin: 12,
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  btn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  btnActive: { backgroundColor: '#fff' },
+  text: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.65)' },
+  textActive: { color: '#16a34a' },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 type Step = 1 | 2 | 3;
 
-export default function ScanReceipt() {
+export default function Transactions() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
 
   // UI state
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const [mode, setMode] = useState<Mode>('scan');
   const [step, setStep] = useState<Step>(1);
   const [scanning, setScanning] = useState(false);
   const [flashOn, setFlashOn] = useState(false);
@@ -259,7 +300,7 @@ export default function ScanReceipt() {
   const [parsed, setParsed] = useState<ParsedReceipt | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
 
-  // Editable form fields (Step 3)
+  // Editable form fields (shared by scan-confirm and manual entry)
   const [formDescription, setFormDescription] = useState('');
   const [formAmount, setFormAmount] = useState('');
   const [formCategory, setFormCategory] = useState('');
@@ -274,7 +315,6 @@ export default function ScanReceipt() {
     AsyncStorage.getItem('categories').then((val) => {
       if (val) setCategories(JSON.parse(val));
     });
-    // Pulse animation for scan button
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.08, duration: 900, useNativeDriver: true }),
@@ -283,22 +323,29 @@ export default function ScanReceipt() {
     ).start();
   }, []);
 
-  // ── Permission guard ──
-  if (!permission) return <View style={s.root} />;
-  if (!permission.granted) {
-    return (
-      <View style={[s.root, s.center]}>
-        <Ionicons name="camera-outline" size={56} color="rgba(255,255,255,0.4)" />
-        <Text style={s.permTitle}>Camera access needed</Text>
-        <Text style={s.permSub}>
-          Grant camera permission to scan receipts automatically.
-        </Text>
-        <TouchableOpacity style={s.permBtn} onPress={requestPermission}>
-          <Text style={s.permBtnText}>Grant Permission</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  // ── Reset helpers ──
+  const clearForm = () => {
+    setParsed(null);
+    setFormDescription('');
+    setFormAmount('');
+    setFormCategory('');
+    setFormDate(new Date());
+    setShowDatePicker(false);
+  };
+
+  const resetFlow = () => {
+    setStep(1);
+    clearForm();
+    setScanning(false);
+  };
+
+  const handleModeChange = (next: Mode) => {
+    if (next === mode) return;
+    clearForm();
+    setStep(1);
+    setScanning(false);
+    setMode(next);
+  };
 
   // ── Process image ──
   const processImage = async (uri: string) => {
@@ -310,8 +357,11 @@ export default function ScanReceipt() {
       if (!raw.trim()) {
         Alert.alert(
           'No text found',
-          'The image was too blurry or had no readable text. Try again.',
-          [{ text: 'Retry', onPress: () => { setStep(1); setScanning(false); } }]
+          'The image was too blurry or had no readable text. Try again, or enter the transaction manually.',
+          [
+            { text: 'Enter manually', onPress: () => handleModeChange('manual') },
+            { text: 'Retry', onPress: () => { setStep(1); setScanning(false); } },
+          ]
         );
         return;
       }
@@ -333,7 +383,6 @@ export default function ScanReceipt() {
     }
   };
 
-  // ── Capture from camera ──
   const handleCapture = async () => {
     if (!cameraRef.current) return;
     try {
@@ -345,7 +394,6 @@ export default function ScanReceipt() {
     }
   };
 
-  // ── Pick from gallery ──
   const handleGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -358,10 +406,16 @@ export default function ScanReceipt() {
 
   // ── Save transaction ──
   const handleSave = async () => {
-    if (!formCategory || !formAmount || !formDescription) {
+    if (!formCategory || !formAmount.trim() || !formDescription.trim()) {
       Alert.alert('Missing fields', 'Please fill in all fields before saving.');
       return;
     }
+    const amountNum = parseFloat(formAmount.replace(',', '.'));
+    if (isNaN(amountNum) || amountNum <= 0) {
+      Alert.alert('Invalid amount', 'Enter an amount greater than zero.');
+      return;
+    }
+
     setSaving(true);
     try {
       const [txRaw, catRaw, totalRaw] = await Promise.all([
@@ -375,8 +429,8 @@ export default function ScanReceipt() {
 
       const newTx: Transaction = {
         category: formCategory,
-        description: formDescription,
-        amount: parseFloat(formAmount),
+        description: formDescription.trim(),
+        amount: amountNum,
         date: formDate.toISOString().split('T')[0],
       };
 
@@ -396,9 +450,12 @@ export default function ScanReceipt() {
         AsyncStorage.setItem('totalExpense', JSON.stringify(newTotal)),
       ]);
 
-      Alert.alert('✅ Saved!', `"${formDescription}" added to ${formCategory}.`, [
+      Alert.alert('✅ Saved!', `"${newTx.description}" added to ${formCategory}.`, [
         { text: 'View Transactions', onPress: () => router.push('/Transactions') },
-        { text: 'Scan Another', onPress: resetFlow },
+        {
+          text: mode === 'manual' ? 'Add Another' : 'Scan Another',
+          onPress: resetFlow,
+        },
       ]);
     } catch (err) {
       console.error('Save error:', err);
@@ -408,129 +465,21 @@ export default function ScanReceipt() {
     }
   };
 
-  const resetFlow = () => {
-    setStep(1);
-    setParsed(null);
-    setFormDescription('');
-    setFormAmount('');
-    setFormCategory('');
-    setFormDate(new Date());
-    setScanning(false);
-  };
+  // ─────────────────────────── Shared form ─────────────────────────────────
 
-  // ─────────────────────────────── RENDER ───────────────────────────────────
-
-  return (
-    <View style={s.root}>
-      <StatusBar style="light" />
-
-      {/* Sidebar */}
-      {isSidebarVisible && (
-        <View style={s.sidebarOverlay}>
-          <Sidebar onClose={() => setIsSidebarVisible(false)} />
-        </View>
-      )}
-
-      <HeaderWithSidebar onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)} />
-      <StepBar step={step} />
-
-      {/* ── STEP 1: Camera ── */}
-      {step === 1 && (
-        <View style={s.cameraContainer}>
-          <CameraView
-            ref={cameraRef}
-            style={s.camera}
-            facing="back"
-            enableTorch={flashOn}
-          >
-            {/* Viewfinder overlay */}
-            <View style={s.viewfinderOuter}>
-              <View style={s.viewfinder}>
-                <View style={[s.corner, s.cornerTL]} />
-                <View style={[s.corner, s.cornerTR]} />
-                <View style={[s.corner, s.cornerBL]} />
-                <View style={[s.corner, s.cornerBR]} />
-                <Text style={s.viewfinderHint}>Position receipt inside the frame</Text>
-              </View>
-            </View>
-
-            {/* Camera controls */}
-            <View style={s.camControls}>
-              <TouchableOpacity
-                style={s.camSideBtn}
-                onPress={() => setFlashOn(!flashOn)}
-                activeOpacity={0.8}
-              >
-                <Ionicons
-                  name={flashOn ? 'flash' : 'flash-off'}
-                  size={22}
-                  color={flashOn ? '#fbbf24' : '#fff'}
-                />
-                <Text style={s.camSideBtnText}>{flashOn ? 'Flash On' : 'Flash'}</Text>
-              </TouchableOpacity>
-
-              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <TouchableOpacity style={s.captureBtn} onPress={handleCapture} activeOpacity={0.85}>
-                  <View style={s.captureBtnInner}>
-                    <Ionicons name="scan" size={28} color="#16a34a" />
-                  </View>
-                </TouchableOpacity>
-              </Animated.View>
-
-              <TouchableOpacity style={s.camSideBtn} onPress={handleGallery} activeOpacity={0.8}>
-                <Ionicons name="images-outline" size={22} color="#fff" />
-                <Text style={s.camSideBtnText}>Gallery</Text>
-              </TouchableOpacity>
-            </View>
-          </CameraView>
-
-          {/* Tip card below camera */}
-          <View style={s.tipCard}>
-            <Ionicons name="bulb-outline" size={18} color="#fbbf24" />
-            <Text style={s.tipText}>
-              Use good lighting and hold the camera steady for best results.
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* ── STEP 2: Processing ── */}
-      {step === 2 && (
-        <View style={[s.center, { flex: 1 }]}>
-          <View style={s.processingCard}>
-            <ActivityIndicator size="large" color="#16a34a" />
-            <Text style={s.processingTitle}>Reading receipt…</Text>
-            <Text style={s.processingSub}>
-              ML Kit is extracting text and detecting the category.
-            </Text>
-            <View style={s.processingSteps}>
-              {['Detecting text regions', 'Extracting amounts & dates', 'Matching category'].map(
-                (label, i) => (
-                  <View key={i} style={s.processingStep}>
-                    <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
-                    <Text style={s.processingStepText}>{label}</Text>
-                  </View>
-                )
-              )}
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* ── STEP 3: Confirm ── */}
-      {step === 3 && parsed && (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={s.confirmScroll}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Raw text preview */}
+  const renderForm = (isManual: boolean) => (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={s.confirmScroll}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* Scan-only extras */}
+      {!isManual && parsed && (
+        <>
           <TouchableOpacity
             style={s.rawPreview}
-            onPress={() =>
-              Alert.alert('Raw OCR Text', parsed.rawText, [{ text: 'Close' }])
-            }
+            onPress={() => Alert.alert('Raw OCR Text', parsed.rawText, [{ text: 'Close' }])}
             activeOpacity={0.8}
           >
             <View style={s.rawPreviewLeft}>
@@ -540,7 +489,6 @@ export default function ScanReceipt() {
             <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.4)" />
           </TouchableOpacity>
 
-          {/* AI suggestion banner */}
           <View style={s.aiBanner}>
             <View style={s.aiBannerLeft}>
               <MaterialIcons name="auto-awesome" size={16} color="#fbbf24" />
@@ -551,115 +499,251 @@ export default function ScanReceipt() {
             </View>
             <Text style={s.aiBannerSub}>Review and adjust below</Text>
           </View>
-
-          {/* Editable form */}
-          <View style={s.formCard}>
-            <View style={s.formCardHeader}>
-              <View style={s.formCardIcon}>
-                <Ionicons name="create-outline" size={18} color="#fff" />
-              </View>
-              <Text style={s.formCardTitle}>Confirm Transaction</Text>
-            </View>
-
-            {/* Description */}
-            <Text style={s.fieldLabel}>Merchant / Description</Text>
-            <View style={s.inputWrap}>
-              <Ionicons name="storefront-outline" size={16} color="#9ca3af" style={s.inputIcon} />
-              <TextInput
-                style={s.input}
-                value={formDescription}
-                onChangeText={setFormDescription}
-                placeholder="Merchant name"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
-
-            {/* Amount */}
-            <Text style={s.fieldLabel}>Amount (K)</Text>
-            <View style={s.inputWrap}>
-              <Ionicons name="cash-outline" size={16} color="#9ca3af" style={s.inputIcon} />
-              <TextInput
-                style={s.input}
-                value={formAmount}
-                onChangeText={setFormAmount}
-                placeholder="0.00"
-                placeholderTextColor="#9ca3af"
-                keyboardType="decimal-pad"
-              />
-            </View>
-
-            {/* Category — tappable chips */}
-            <Text style={s.fieldLabel}>Category</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={s.chipsScroll}
-              contentContainerStyle={s.chipsContent}
-            >
-              {categories.map((cat, i) => {
-                const active = cat.name === formCategory;
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={[s.chip, active && s.chipActive]}
-                    onPress={() => setFormCategory(cat.name)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[s.chipText, active && s.chipTextActive]}>
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* Date */}
-            <Text style={s.fieldLabel}>Date</Text>
-            <TouchableOpacity
-              style={s.dateBtn}
-              onPress={() => setShowDatePicker(true)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="calendar-outline" size={16} color="#16a34a" />
-              <Text style={s.dateBtnText}>{formDate.toDateString()}</Text>
-              <Ionicons name="chevron-down" size={14} color="#9ca3af" />
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={formDate}
-                mode="date"
-                display="default"
-                onChange={(_, selected) => {
-                  setShowDatePicker(false);
-                  if (selected) setFormDate(selected);
-                }}
-              />
-            )}
-          </View>
-
-          {/* Actions */}
-          <TouchableOpacity
-            style={[s.saveBtn, saving && s.saveBtnDisabled]}
-            onPress={handleSave}
-            activeOpacity={0.85}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-            )}
-            <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save Transaction'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={s.retryBtn} onPress={resetFlow} activeOpacity={0.8}>
-            <Ionicons name="refresh-outline" size={18} color="rgba(255,255,255,0.6)" />
-            <Text style={s.retryText}>Scan a different receipt</Text>
-          </TouchableOpacity>
-
-          <View style={{ height: 40 }} />
-        </ScrollView>
+        </>
       )}
+
+      <View style={s.formCard}>
+        <View style={s.formCardHeader}>
+          <View style={s.formCardIcon}>
+            <Ionicons name={isManual ? 'add' : 'create-outline'} size={18} color="#fff" />
+          </View>
+          <Text style={s.formCardTitle}>
+            {isManual ? 'New Transaction' : 'Confirm Transaction'}
+          </Text>
+        </View>
+
+        <Text style={s.fieldLabel}>{isManual ? 'Description' : 'Merchant / Description'}</Text>
+        <View style={s.inputWrap}>
+          <Ionicons name="storefront-outline" size={16} color="#9ca3af" style={s.inputIcon} />
+          <TextInput
+            style={s.input}
+            value={formDescription}
+            onChangeText={setFormDescription}
+            placeholder={isManual ? 'e.g. Shoprite groceries' : 'Merchant name'}
+            placeholderTextColor="#9ca3af"
+          />
+        </View>
+
+        <Text style={s.fieldLabel}>Amount (K)</Text>
+        <View style={s.inputWrap}>
+          <Ionicons name="cash-outline" size={16} color="#9ca3af" style={s.inputIcon} />
+          <TextInput
+            style={s.input}
+            value={formAmount}
+            onChangeText={setFormAmount}
+            placeholder="0.00"
+            placeholderTextColor="#9ca3af"
+            keyboardType="decimal-pad"
+          />
+        </View>
+
+        <Text style={s.fieldLabel}>Category</Text>
+        {categories.length === 0 ? (
+          <Text style={s.emptyCats}>
+            No categories yet. Create a category first, then come back to add transactions.
+          </Text>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={s.chipsScroll}
+            contentContainerStyle={s.chipsContent}
+          >
+            {categories.map((cat, i) => {
+              const active = cat.name === formCategory;
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={[s.chip, active && s.chipActive]}
+                  onPress={() => setFormCategory(cat.name)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[s.chipText, active && s.chipTextActive]}>{cat.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        <Text style={s.fieldLabel}>Date</Text>
+        <TouchableOpacity
+          style={s.dateBtn}
+          onPress={() => setShowDatePicker(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="calendar-outline" size={16} color="#16a34a" />
+          <Text style={s.dateBtnText}>{formDate.toDateString()}</Text>
+          <Ionicons name="chevron-down" size={14} color="#9ca3af" />
+        </TouchableOpacity>
+        {showDatePicker && (
+          <DateTimePicker
+            value={formDate}
+            mode="date"
+            display="default"
+            maximumDate={new Date()}
+            onChange={(_, selected) => {
+              setShowDatePicker(false);
+              if (selected) setFormDate(selected);
+            }}
+          />
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={[s.saveBtn, saving && s.saveBtnDisabled]}
+        onPress={handleSave}
+        activeOpacity={0.85}
+        disabled={saving}
+      >
+        {saving ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+        )}
+        <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save Transaction'}</Text>
+      </TouchableOpacity>
+
+      {isManual ? (
+        <TouchableOpacity style={s.retryBtn} onPress={() => handleModeChange('scan')} activeOpacity={0.8}>
+          <Ionicons name="camera-outline" size={18} color="rgba(255,255,255,0.6)" />
+          <Text style={s.retryText}>Scan a receipt instead</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={s.retryBtn} onPress={resetFlow} activeOpacity={0.8}>
+          <Ionicons name="refresh-outline" size={18} color="rgba(255,255,255,0.6)" />
+          <Text style={s.retryText}>Scan a different receipt</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+
+  // ─────────────────────────── Scan content ────────────────────────────────
+
+  const renderScan = () => {
+    // Permission handling only applies to camera mode
+    if (!permission) return <View style={{ flex: 1 }} />;
+    if (!permission.granted) {
+      return (
+        <View style={[s.center, { flex: 1 }]}>
+          <Ionicons name="camera-outline" size={56} color="rgba(255,255,255,0.4)" />
+          <Text style={s.permTitle}>Camera access needed</Text>
+          <Text style={s.permSub}>
+            Grant camera permission to scan receipts, or enter the transaction manually.
+          </Text>
+          <TouchableOpacity style={s.permBtn} onPress={requestPermission}>
+            <Text style={s.permBtnText}>Grant Permission</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.permLink} onPress={() => handleModeChange('manual')}>
+            <Text style={s.permLinkText}>Enter manually instead</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <>
+        <StepBar step={step} />
+
+        {step === 1 && (
+          <View style={s.cameraContainer}>
+            <CameraView ref={cameraRef} style={s.camera} facing="back" enableTorch={flashOn}>
+              <View style={s.viewfinderOuter}>
+                <View style={s.viewfinder}>
+                  <View style={[s.corner, s.cornerTL]} />
+                  <View style={[s.corner, s.cornerTR]} />
+                  <View style={[s.corner, s.cornerBL]} />
+                  <View style={[s.corner, s.cornerBR]} />
+                  <Text style={s.viewfinderHint}>Position receipt inside the frame</Text>
+                </View>
+              </View>
+
+              <View style={s.camControls}>
+                <TouchableOpacity
+                  style={s.camSideBtn}
+                  onPress={() => setFlashOn(!flashOn)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={flashOn ? 'flash' : 'flash-off'}
+                    size={22}
+                    color={flashOn ? '#fbbf24' : '#fff'}
+                  />
+                  <Text style={s.camSideBtnText}>{flashOn ? 'Flash On' : 'Flash'}</Text>
+                </TouchableOpacity>
+
+                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                  <TouchableOpacity style={s.captureBtn} onPress={handleCapture} activeOpacity={0.85}>
+                    <View style={s.captureBtnInner}>
+                      <Ionicons name="scan" size={28} color="#16a34a" />
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
+
+                <TouchableOpacity style={s.camSideBtn} onPress={handleGallery} activeOpacity={0.8}>
+                  <Ionicons name="images-outline" size={22} color="#fff" />
+                  <Text style={s.camSideBtnText}>Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            </CameraView>
+
+            <View style={s.tipCard}>
+              <Ionicons name="bulb-outline" size={18} color="#fbbf24" />
+              <Text style={s.tipText}>
+                Use good lighting and hold the camera steady for best results.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {step === 2 && (
+          <View style={[s.center, { flex: 1 }]}>
+            <View style={s.processingCard}>
+              <ActivityIndicator size="large" color="#16a34a" />
+              <Text style={s.processingTitle}>Reading receipt…</Text>
+              <Text style={s.processingSub}>
+                ML Kit is extracting text and detecting the category.
+              </Text>
+              <View style={s.processingSteps}>
+                {['Detecting text regions', 'Extracting amounts & dates', 'Matching category'].map(
+                  (label, i) => (
+                    <View key={i} style={s.processingStep}>
+                      <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                      <Text style={s.processingStepText}>{label}</Text>
+                    </View>
+                  )
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {step === 3 && parsed && renderForm(false)}
+      </>
+    );
+  };
+
+  // ─────────────────────────────── RENDER ───────────────────────────────────
+
+  return (
+    <View style={s.root}>
+      <StatusBar style="light" />
+
+      {isSidebarVisible && (
+        <View style={s.sidebarOverlay}>
+          <Sidebar onClose={() => setIsSidebarVisible(false)} />
+        </View>
+      )}
+
+      <HeaderWithSidebar onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)} />
+
+      {/* Hide the switch while OCR is running */}
+      {!(mode === 'scan' && step === 2) && (
+        <ModeSwitch mode={mode} onChange={handleModeChange} />
+      )}
+
+      {mode === 'scan' ? renderScan() : renderForm(true)}
 
       <Footer />
     </View>
@@ -692,6 +776,8 @@ const s = StyleSheet.create({
     paddingVertical: 14, borderRadius: 14,
   },
   permBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  permLink: { marginTop: 16, padding: 8 },
+  permLinkText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600' },
 
   // ── Camera ──
   cameraContainer: { flex: 1 },
@@ -781,8 +867,8 @@ const s = StyleSheet.create({
   processingStep: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   processingStepText: { fontSize: 13, color: 'rgba(255,255,255,0.65)', fontWeight: '500' },
 
-  // ── Confirm ──
-  confirmScroll: { padding: 16 },
+  // ── Confirm / Manual form ──
+  confirmScroll: { padding: 16, paddingTop: 4 },
   rawPreview: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -809,7 +895,6 @@ const s = StyleSheet.create({
   aiBannerBold: { color: '#fbbf24', fontWeight: '800' },
   aiBannerSub: { fontSize: 11, color: 'rgba(255,255,255,0.4)', paddingLeft: 24 },
 
-  // Form card (matches Transactions page style)
   formCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -845,7 +930,7 @@ const s = StyleSheet.create({
   inputIcon: { marginRight: 8 },
   input: { flex: 1, fontSize: 14, color: '#111827', fontWeight: '500' },
 
-  // Category chips
+  emptyCats: { fontSize: 13, color: '#6b7280', lineHeight: 19 },
   chipsScroll: { marginBottom: 4 },
   chipsContent: { gap: 8, paddingVertical: 4 },
   chip: {
@@ -859,7 +944,6 @@ const s = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
   chipTextActive: { color: '#fff' },
 
-  // Date
   dateBtn: {
     flexDirection: 'row', alignItems: 'center',
     borderWidth: 1, borderColor: '#e5e7eb',
@@ -868,7 +952,6 @@ const s = StyleSheet.create({
   },
   dateBtnText: { flex: 1, fontSize: 14, color: '#16a34a', fontWeight: '600' },
 
-  // Buttons
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#16a34a', borderRadius: 14,

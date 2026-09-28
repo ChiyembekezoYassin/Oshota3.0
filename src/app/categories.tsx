@@ -10,8 +10,6 @@ import HeaderWithSidebar from '@/components/HeaderWithSidebar';
 import Footer from '@/components/footer';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 
 const backgroundImage = require('@/assets/images/budget.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -31,11 +29,6 @@ const ICON_COLORS: Record<string, string> = {
 };
 const getColor = (key: string) => ICON_COLORS[key] ?? '#22c55e';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false,
-  }),
-});
 
 // ── Month Selector Strip ───────────────────────────────────────────────────
 function MonthStrip({
@@ -250,7 +243,7 @@ const cardStyles = StyleSheet.create({
 });
 
 // ── Main Screen ────────────────────────────────────────────────────────────
-export default function Categories() {
+export default function categories() {
   const router = useRouter();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const sidebarAnimation = useRef(new Animated.Value(-SCREEN_WIDTH * 0.45)).current;
@@ -320,33 +313,6 @@ export default function Categories() {
 
   useFocusEffect(React.useCallback(() => { loadDataForMonth(); }, [selectedMonth, selectedYear]));
 
-  useEffect(() => {
-    if (Device.isDevice) {
-      Notifications.getPermissionsAsync().then(({ status }) => {
-        if (status !== 'granted') Notifications.requestPermissionsAsync();
-      });
-      if (Platform.OS === 'android') {
-        Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-        });
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (totalBudget <= 0) return;
-    const pct = (totalExpense / totalBudget) * 100;
-    if (pct >= 100) {
-      Notifications.scheduleNotificationAsync({ content: { title: 'Kushota: Budget Exceeded!', body: 'Zathapo! 100% used.' }, trigger: null });
-    } else if (pct >= 90) {
-      Notifications.scheduleNotificationAsync({ content: { title: 'Kushota: 90% Reached!', body: 'Uduka!' }, trigger: null });
-    } else if (pct >= 80) {
-      Notifications.scheduleNotificationAsync({ content: { title: 'Kushota: 80% Used', body: 'Review your expenses.' }, trigger: null });
-    }
-  }, [totalExpense]);
 
   const updateCategoryAmount = async (key: string, newAmount: string) => {
     const updated = categories.map(c => c.key === key ? { ...c, amount: newAmount } : c);

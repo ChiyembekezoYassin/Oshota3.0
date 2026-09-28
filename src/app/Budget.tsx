@@ -346,7 +346,7 @@ export default function Budget() {
 
 const styles = StyleSheet.create({
   bg: { flex: 1, resizeMode: 'cover' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,15,8,0.6)' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(1, 37, 20, 0.6)' },
   root: { flex: 1 },
 
   sidebarWrap: {

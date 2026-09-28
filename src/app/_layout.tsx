@@ -84,15 +84,7 @@ export default function RootLayout() {
           title: 'Utilities', 
         }}
       />
-      <Stack.Screen 
-        name="Categories" 
-        options={{ 
-          title: 'Categories', 
-          headerTitle: () => (
-            <HeaderWithSidebar onToggleSidebar={handleToggleSidebar} /> 
-          ),
-        }} 
-      />
+      
       <Stack.Screen 
         name="Charts" 
         options={{ 

@@ -6,7 +6,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter, usePathname } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+
 
 interface SidebarProps {
   onClose: () => void;
@@ -43,32 +43,37 @@ export default function Sidebar({ onClose }: SidebarProps) {
   const headerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Load username from users.json
-    (async () => {
-      try {
-        const fileUri = `${FileSystem.documentDirectory}users.json`;
-        const fileExists = await FileSystem.getInfoAsync(fileUri);
-        if (fileExists.exists) {
-          const data = await FileSystem.readAsStringAsync(fileUri);
-          const users = JSON.parse(data);
-          if (users.length > 0) {
-            const user = users[users.length - 1];
-            setUserName(user.name || '');
-            setUserOccupation(user.occupation || '');
-          }
-        }
-      } catch (e) {
-        console.error('Error loading user for sidebar:', e);
-      }
-    })();
+  // Load current user
+  (async () => {
+    try {
+      const currentUser = await AsyncStorage.getItem('currentUser');
 
-    Animated.stagger(45, [
-      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true, tension: 80 }),
-      ...itemAnims.map((anim) =>
-        Animated.spring(anim, { toValue: 1, useNativeDriver: true, tension: 80 })
-      ),
-    ]).start();
-  }, []);
+      if (currentUser) {
+        const user = JSON.parse(currentUser);
+
+        setUserName(user.name || '');
+        setUserOccupation(user.occupation || '');
+      }
+    } catch (e) {
+      console.error('Error loading user for sidebar:', e);
+    }
+  })();
+
+  Animated.stagger(45, [
+    Animated.spring(headerAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 80,
+    }),
+    ...itemAnims.map((anim) =>
+      Animated.spring(anim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 80,
+      })
+    ),
+  ]).start();
+}, []);
 
   const navigate = (href: string) => {
     onClose();
