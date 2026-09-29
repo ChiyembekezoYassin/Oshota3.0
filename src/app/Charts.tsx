@@ -228,7 +228,7 @@ export default function Charts() {
   const barColor = Number(usedPct) >= 90 ? '#ef4444' : Number(usedPct) >= 80 ? '#f97316' : '#22c55e';
 
   return (
-    <ImageBackground source={backgroundImage} style={styles.bg}>
+    <View style={styles.bg}>
       <View style={styles.overlay} />
 
       <View style={styles.root}>
@@ -397,12 +397,12 @@ export default function Charts() {
         <StatusBar style="light" />
         <Footer />
       </View>
-    </ImageBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1, resizeMode: 'cover' },
+  bg: { flex: 1, resizeMode: 'cover', backgroundColor: 'rgba(7, 51, 11, 0.9)' },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,15,8,0.62)' },
   root: { flex: 1 },
   sidebarWrap: {

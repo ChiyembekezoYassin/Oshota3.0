@@ -6,7 +6,6 @@ import {
   Text,
   View,
   FlatList,
-  ImageBackground,
   Dimensions,
   TextInput,
   TouchableOpacity,
@@ -20,7 +19,6 @@ import Footer from '@/components/footer';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Link, useFocusEffect } from 'expo-router';
 
-const backgroundImage = require('@/assets/images/budget.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ── Stat Card ──────────────────────────────────────────────────────────────
@@ -505,8 +503,7 @@ export default function Home() {
   const remaining = totalBudget - totalExpense;
 
   return (
-    <ImageBackground
-      source={backgroundImage}
+    <View
       style={styles.bg}
     >
       
@@ -664,19 +661,20 @@ export default function Home() {
       <Footer />
       <StatusBar style="light" />
     
-    </ImageBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   bg: {
     flex: 1,
+    backgroundColor: '#023702', // CSS darkgreen
     resizeMode: 'cover',
   },
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 100, 0, 0.7)',
+    backgroundColor: 'rgba(0, 60, 0, 0.85)',
   },
 
   root: {

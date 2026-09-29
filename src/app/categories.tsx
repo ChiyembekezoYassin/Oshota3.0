@@ -347,7 +347,7 @@ export default function categories() {
   const isCurrentMonth = selectedMonth === now.getMonth() && selectedYear === now.getFullYear();
 
   return (
-    <ImageBackground source={backgroundImage} style={styles.bg}>
+    <View style={styles.bg}>
       <View style={styles.overlay} />
 
       <View style={styles.root}>
@@ -447,12 +447,12 @@ export default function categories() {
         <StatusBar style="light" />
       </View>
       <Footer />
-    </ImageBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1, resizeMode: 'cover' },
+  bg: { flex: 1, resizeMode: 'cover', backgroundColor: 'rgba(1, 40, 4, 0.9)' },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,15,8,0.62)' },
   root: { flex: 1 },
   sidebarWrap: {

@@ -345,7 +345,7 @@ export default function Budget() {
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1, resizeMode: 'cover' },
+  bg: { flex: 1, resizeMode: 'cover', backgroundColor: 'rgba(1, 37, 20, 0.6)' },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(1, 37, 20, 0.6)' },
   root: { flex: 1 },
 
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   // Hero
   heroCard: {
     alignItems: 'center',
-    backgroundColor: 'rgba(22,163,74,0.2)',
+    backgroundColor: 'rgba(7, 51, 11, 0.9)',
     borderRadius: 20, padding: 28,
     marginBottom: 16, marginTop: 8,
     borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)',
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5, shadowRadius: 10, elevation: 8,
   },
   heroLabel: {
-    fontSize: 13, color: 'rgba(255,255,255,0.55)',
+    fontSize: 13, color: 'rgba(255,255,255,0.9)',
     fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1,
     marginBottom: 6,
   },
@@ -385,13 +385,13 @@ const styles = StyleSheet.create({
     fontSize: 40, fontWeight: '900', color: '#fff', letterSpacing: -1,
   },
   heroMonth: {
-    fontSize: 13, color: 'rgba(255,255,255,0.4)',
+    fontSize: 13, color: 'rgba(255,255,255,0.9)',
     fontWeight: '500', marginTop: 6,
   },
 
   // Cards
   card: {
-    backgroundColor: 'rgba(5, 5, 5, 0.06)',
+    backgroundColor: 'rgba(7, 51, 11, 0.9)',
     borderRadius: 18, padding: 16,
     marginBottom: 14,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
